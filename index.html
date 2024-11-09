@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Happy Adventure Game</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css">
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f0f2f5;
+            padding: 20px;
+        }
+
+        main {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+        }
+
+        #gameContainer {
+            display: grid;
+            grid-template-columns: 3fr 1fr;
+            gap: 20px;
+        }
+
+        .status-panel {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .combat-log {
+            height: 200px;
+            overflow-y: auto;
+            background-color: #282c34;
+            color: #abb2bf;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            margin-top: 15px;
+        }
+
+        .combat-options button {
+            margin: 5px;
+            min-width: 120px;
+        }
+
+        .character-stats {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+
+        .stat-box {
+            background-color: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            flex: 1;
+            margin: 0 5px;
+        }
+
+        .progress {
+            height: 25px;
+            margin-bottom: 10px;
+        }
+
+        .debug-log {
+            font-family: monospace;
+            font-size: 12px;
+            color: #666;
+        }
+
+        #inventoryList {
+            list-style: none;
+            padding: 0;
+        }
+
+        #inventoryList li {
+            padding: 8px;
+            margin: 5px 0;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        #inventoryList li:hover {
+            background-color: #e9ecef;
+        }
+    </style>
+</head>
+
+<body>
+    <main>
+        <div id="nameInputContainer" class="text-center mb-4">
+            <input type="text" id="nameInput" class="form-control mb-2" placeholder="Enter your name">
+            <button id="nameSubmitButton" class="btn btn-primary">Start Quest</button>
+        </div>
+
+        <div id="gameContainer">
+            <div class="game-main">
+                <div id="companionText" class="h4 text-center mb-4"></div>
+                <div id="storyContainer" class="mb-4"></div>
+                <div id="combatContainer" class="mb-4">
+                    <div class="combat-log"></div>
+                    <div class="combat-options"></div>
+                </div>
+            </div>
+
+            <div class="game-sidebar">
+                <div id="characterStatus" class="status-panel">
+                    <h4>Character Status</h4>
+                    <div class="character-stats"></div>
+                </div>
+
+                <div id="inventoryContainer" class="status-panel">
+                    <h4>Inventory</h4>
+                    <ul id="inventoryList"></ul>
+                </div>
+
+                <div id="debugLog" class="debug-log"></div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        class Character {
+            constructor(name, attributes) {
+                this.name = name;
+                this.attributes = attributes;
+                this.energy = 100;
+                this.maxEnergy = 100;
+                this.isAlive = true;
+            }
+
+            updateStats() {
+                const statsContainer = document.querySelector('.character-stats');
+                statsContainer.innerHTML = `
+                    <div class="stat-box">
+                        <div class="progress">
+                            <div class="progress-bar bg-success" 
+                                 role="progressbar" 
+                                 style="width: ${(this.energy / this.maxEnergy) * 100}%">
+                                 ${this.energy}/${this.maxEnergy}
+                            </div>
+                        </div>
+                        <div>STR: ${this.attributes.Strength}</div>
+                        <div>INT: ${this.attributes.Intelligence}</div>
+                        <div>AGI: ${this.attributes.Agility}</div>
+                    </div>
+                `;
+                this.logDebug(`Stats updated for ${this.name}: Energy=${this.energy}, STR=${this.attributes.Strength}, INT=${this.attributes.Intelligence}`);
+            }
+
+            takeDamage(amount) {
+                this.energy = Math.max(0, this.energy - amount);
+                this.isAlive = this.energy > 0;
+                this.updateStats();
+                this.logDebug(`${this.name} took ${amount} damage. Current energy: ${this.energy}`);
+                return !this.isAlive;
+            }
+
+            heal(amount) {
+                this.energy = Math.min(this.maxEnergy, this.energy + amount);
+                this.updateStats();
+                this.logDebug(`${this.name} healed for ${amount}. Current energy: ${this.energy}`);
+            }
+
+            logDebug(message) {
+                const debugLog = document.getElementById('debugLog');
+                debugLog.innerHTML += `<div>[DEBUG] ${new Date().toLocaleTimeString()} - ${message}</div>`;
+                debugLog.scrollTop = debugLog.scrollHeight;
+            }
+        }
+
+        class Enemy extends Character {
+            constructor(name, attributes) {
+                super(name, attributes);
+                this.maxEnergy = 50 + Math.floor(Math.random() * 50);
+                this.energy = this.maxEnergy;
+                this.fleeThreshold = 20; // Enemy will consider fleeing below this energy percentage
+            }
+
+            displayStatus() {
+                const statsContainer = document.querySelector('.character-stats');
+                statsContainer.innerHTML += `
+                    <div class="stat-box enemy-stats">
+                        <h5>${this.name}</h5>
+                        <div class="progress">
+                            <div class="progress-bar bg-danger" 
+                                 role="progressbar" 
+                                 style="width: ${(this.energy / this.maxEnergy) * 100}%">
+                                 ${this.energy}/${this.maxEnergy}
+                            </div>
+                        </div>
+                        <div>STR: ${this.attributes.Strength}</div>
+                        <div>INT: ${this.attributes.Intelligence}</div>
+                    </div>
+                `;
+            }
+
+            considerFlee() {
+                const fleeChance = (this.fleeThreshold - (this.energy / this.maxEnergy) * 100) * 2;
+                const willFlee = Math.random() * 100 < fleeChance;
+                this.logDebug(`${this.name} considering flee: Energy=${this.energy}, Chance=${fleeChance}%, Result=${willFlee}`);
+                return willFlee;
+            }
+        }
+
+        function handleCombat() {
+            const combatLog = document.querySelector('.combat-log');
+            let combatOptions = document.querySelector('.combat-options');
+            combatLog.innerHTML = `<div>Combat started: ${player.name} vs ${currentEnemy.name}</div>`;
+            updateCombatUI();
+            function updateCombatUI() {
+                combatOptions = document.querySelector('.combat-options');
+                combatOptions.innerHTML = `
+                    <button onclick="handleAttack('physical')" class="btn btn-danger">Physical Attack</button>
+                    <button onclick="handleAttack('magical')" class="btn btn-primary">Magical Attack</button>
+                    <button onclick="attemptFlee()" class="btn btn-warning">Attempt to Flee</button>
+                `;
+                player.updateStats();
+                currentEnemy.displayStatus();
+            }
+
+            window.handleAttack = async (type) => {
+
+                const playerRoll = rollDice();
+                const enemyRoll = rollDice();
+                const attackBonus = type === 'physical' ? player.attributes.Strength : player.attributes.Intelligence;
+                const defenseBonus = type === 'physical' ? currentEnemy.attributes.Strength : currentEnemy.attributes.Intelligence;
+
+                logCombat(`${player.name} uses ${type} attack! (Roll: ${playerRoll} + ${attackBonus})`);
+                logCombat(`${currentEnemy.name} defends! (Roll: ${enemyRoll} + ${defenseBonus})`);
+
+                if (playerRoll + attackBonus > enemyRoll + defenseBonus) {
+                    const damage = Math.floor(Math.random() * 10) + attackBonus;
+                    const isDead = currentEnemy.takeDamage(damage);
+                    logCombat(`Hit! ${currentEnemy.name} takes ${damage} damage!`);
+
+                    if (isDead) {
+                        endCombat(true);
+                        return;
+                    }
+                } else {
+                    logCombat(`Miss! ${currentEnemy.name} dodges the attack!`);
+                }
+
+                // Enemy turn
+                if (currentEnemy.considerFlee()) {
+                    logCombat(`${currentEnemy.name} has fled the battle!`);
+                    endCombat(true);
+                    return;
+                }
+
+                const enemyAttackRoll = rollDice();
+                const playerDefenseRoll = rollDice();
+
+                if (enemyAttackRoll + currentEnemy.attributes.Strength > playerDefenseRoll + player.attributes.Agility) {
+                    const damage = Math.floor(Math.random() * 8) + currentEnemy.attributes.Strength;
+                    const isDead = player.takeDamage(damage);
+                    logCombat(`${currentEnemy.name} hits you for ${damage} damage!`);
+
+                    if (isDead) {
+                        endCombat(false);
+                        return;
+                    }
+                } else {
+                    logCombat(`${currentEnemy.name}'s attack misses!`);
+                }
+
+                updateCombatUI();
+            };
+
+            window.attemptFlee = () => {
+                const fleeRoll = rollDice() + player.attributes.Agility;
+                const pursuitRoll = rollDice() + currentEnemy.attributes.Agility;
+
+                if (fleeRoll > pursuitRoll) {
+                    logCombat(`${player.name} successfully fled from battle!`);
+                    endCombat(true);
+                } else {
+                    logCombat(`Failed to flee! ${currentEnemy.name} prevents your escape!`);
+                    const damage = Math.floor(Math.random() * 5) + 5;
+                    player.takeDamage(damage);
+                    logCombat(`You take ${damage} damage while trying to escape!`);
+                }
+            };
+
+            function logCombat(message) {
+                combatLog.innerHTML += `<div>${message}</div>`;
+                combatLog.scrollTop = combatLog.scrollHeight;
+            }
+
+            function endCombat(playerWon) {
+                combatOptions.innerHTML = '';
+                if (playerWon) {
+                    logCombat('Combat ended - Victory!');
+                    const healAmount = Math.floor(Math.random() * 20) + 10;
+                    player.heal(healAmount);
+                    logCombat(`You recover ${healAmount} energy!`);
+                    showStory(currentStory.options[0].outcome);
+                } else {
+                    logCombat('Combat ended - Defeat!');
+                    showGameOver();
+                }
+
+            }
+
+            updateCombatUI();
+        }
+
+        function showGameOver() {
+            const storyContainer = document.getElementById('storyContainer');
+            storyContainer.innerHTML = `
+                <div class="text-center">
+                    <h2>Game Over</h2>
+                    <p>Your adventure has come to an end...</p>
+                    <button onclick="location.reload()" class="btn btn-primary">Start New Game</button>
+                </div>
+            `;
+        }
+
+
+        // Story data structure with expanded storyline
+        const storyDecisions = [
+            {
+                id: 1,
+                text: "Welcome to the Mystical Realm, [name]! You find yourself at the edge of the Whispering Woods. Strange sounds echo through the ancient trees.",
+                options: [
+                    { text: "Follow the mysterious melody deeper into the woods", outcome: 2 },
+                    { text: "Take the worn path toward the mountain pass", outcome: 3 }
+                ]
+            },
+            {
+                id: 2,
+                text: "The melody leads you to a clearing where a Shadowwolf, a creature of dark magic, guards an ancient shrine.",
+                enemy: {
+                    name: "Shadowwolf",
+                    attributes: { Strength: 7, Intelligence: 4, Agility: 6 }
+                },
+                options: [
+                    { text: "Continue your journey", outcome: 4 }
+                ]
+            },
+            {
+                id: 3,
+                text: "In the mountain pass, you discover a cave emanating magical energy. Inside, you find a mysterious crystalline staff.",
+                options: [
+                    {
+                        text: "Take the staff",
+                        item: {
+                            name: "Crystal Staff",
+                            successText: "The staff hums with ancient power, increasing your magical ability.",
+                            attributeModifier: { Intelligence: 3 }
+                        },
+                        outcome: 5
+                    },
+                    { text: "Leave the staff and continue", outcome: 5 }
+                ]
+            },
+            {
+                id: 4,
+                text: "You find an abandoned temple covered in magical runes. A book of spells lies open on a pedestal.",
+                options: [
+                    {
+                        text: "Study the spell book",
+                        item: {
+                            name: "Ancient Spellbook",
+                            successText: "The magical knowledge flows into your mind.",
+                            attributeModifier: { Intelligence: 2, Agility: 1 }
+                        },
+                        outcome: 6
+                    },
+                    { text: "Search the temple for other treasures", outcome: 7 }
+                ]
+            },
+            {
+                id: 5,
+                text: "You encounter a group of bandits led by a mysterious mage.",
+                enemy: {
+                    name: "Bandit Mage",
+                    attributes: { Strength: 5, Intelligence: 8, Agility: 6 }
+                },
+                options: [
+                    { text: "Press onward", outcome: 8 }
+                ]
+            },
+            {
+                id: 6,
+                text: "The magical energy from the spellbook attracts a Chaos Elemental!",
+                enemy: {
+                    name: "Chaos Elemental",
+                    attributes: { Strength: 6, Intelligence: 7, Agility: 8 }
+                },
+                options: [
+                    { text: "Continue your quest", outcome: 9 }
+                ]
+            },
+            {
+                id: 7,
+                text: "You find a legendary sword embedded in a stone pedestal. It radiates powerful energy.",
+                options: [
+                    {
+                        text: "Attempt to claim the sword",
+                        item: {
+                            name: "Legendary Sword",
+                            successText: "The sword accepts you as its wielder, granting you great strength!",
+                            attributeModifier: { Strength: 4 }
+                        },
+                        outcome: 9
+                    },
+                    { text: "Respect the ancient weapon and leave", outcome: 9 }
+                ]
+            },
+            {
+                id: 8,
+                text: "You discover a hidden grove where a wise hermit offers to teach you ancient combat techniques.",
+                options: [
+                    {
+                        text: "Train with the hermit",
+                        item: {
+                            name: "Combat Training",
+                            successText: "Your combat abilities have improved significantly!",
+                            attributeModifier: { Strength: 2, Agility: 2 }
+                        },
+                        outcome: 10
+                    },
+                    { text: "Politely decline and continue", outcome: 10 }
+                ]
+            },
+            {
+                id: 9,
+                text: "You reach the entrance of the Shadow Keep, where the Dark Sorcerer resides. A corrupted guardian blocks your path.",
+                enemy: {
+                    name: "Corrupted Guardian",
+                    attributes: { Strength: 8, Intelligence: 6, Agility: 7 }
+                },
+                options: [
+                    { text: "Enter the keep", outcome: 11 }
+                ]
+            },
+            {
+                id: 10,
+                text: "You find a magical fountain. Its waters sparkle with healing energy.",
+                options: [
+                    {
+                        text: "Drink from the fountain",
+                        item: {
+                            name: "Blessed Water",
+                            successText: "The magical water restores your vitality!",
+                            attributeModifier: { Energy: 50 }
+                        },
+                        outcome: 11
+                    },
+                    { text: "Continue to the keep", outcome: 11 }
+                ]
+            },
+            {
+                id: 11,
+                text: "Finally, you reach the Dark Sorcerer's chamber. He rises from his throne, dark energy swirling around him.",
+                enemy: {
+                    name: "Dark Sorcerer",
+                    attributes: { Strength: 9, Intelligence: 10, Agility: 8 }
+                },
+                options: [
+                    { text: "Complete your quest", outcome: 12 }
+                ]
+            },
+            {
+                id: 12,
+                text: "Congratulations! You have defeated the Dark Sorcerer and saved the realm! The people will sing tales of your heroic deeds for generations to come.",
+                options: [
+                    { text: "Start a new adventure", outcome: 1 },
+                    { text: "End your journey", outcome: 'end' }
+                ]
+            }
+        ];
+
+        // Utility functions
+        function rollDice() {
+            const result = Math.floor(Math.random() * 6) + 1;
+            logDebug(`Dice rolled: ${result}`);
+            return result;
+        }
+
+        function getRandomAttribute() {
+            return Math.floor(Math.random() * 4) + 5; // Random value between 5 and 8
+        }
+
+        function logDebug(message) {
+            const debugLog = document.getElementById('debugLog');
+            const timestamp = new Date().toLocaleTimeString();
+            debugLog.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            debugLog.scrollTop = debugLog.scrollHeight;
+        }
+
+        // Inventory management
+        const inventory = [];
+
+        function updateInventory() {
+            const inventoryList = document.getElementById('inventoryList');
+            inventoryList.innerHTML = '';
+            inventory.forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'inventory-item';
+                li.innerHTML = `
+            <span>${item.name}</span>
+            <button class="btn btn-sm btn-outline-primary" onclick="useInventoryItem('${item.name}')">Use</button>
+        `;
+                inventoryList.appendChild(li);
+            });
+            document.getElementById('inventoryContainer').style.display = inventory.length ? 'block' : 'none';
+        }
+
+        function useInventoryItem(itemName) {
+            const item = inventory.find(i => i.name === itemName);
+            if (!item) return;
+
+            logDebug(`Using item: ${item.name}`);
+            const storyContainer = document.getElementById('storyContainer');
+            const successP = document.createElement('p');
+            successP.textContent = item.successText;
+            storyContainer.appendChild(successP);
+
+            for (let attr in item.attributeModifier) {
+                if (attr === 'Energy') {
+                    player.heal(item.attributeModifier[attr]);
+                } else {
+                    player.attributes[attr] += item.attributeModifier[attr];
+                }
+            }
+
+            // Remove consumed item
+            const itemIndex = inventory.findIndex(i => i.name === itemName);
+            inventory.splice(itemIndex, 1);
+            updateInventory();
+            player.updateStats();
+        }
+
+        // Story progression
+        let currentStory = null;
+        let player = null;
+        let currentEnemy = null;
+
+        function showStory(id) {
+            const story = storyDecisions.find(s => s.id === id);
+            if (!story) return;
+
+            currentStory = story;
+            logDebug(`Loading story ID: ${id}`);
+
+            const storyContainer = document.getElementById('storyContainer');
+            storyContainer.innerHTML = `<p class="story-text">${story.text.replace('[name]', player.name)}</p>`;
+
+            if (story.enemy) {
+                logDebug(`Initializing enemy: ${story.enemy.name}`);
+                currentEnemy = new Enemy(story.enemy.name, story.enemy.attributes);
+                currentEnemy.displayStatus();
+                handleCombat();
+            } else {
+                const optionsDiv = document.createElement('div');
+                optionsDiv.className = 'story-options';
+
+                story.options.forEach(option => {
+                    const button = document.createElement('button');
+                    button.className = 'btn btn-primary m-2';
+                    button.textContent = option.text;
+                    button.onclick = () => {
+                        logDebug(`Selected option: ${option.text}`);
+                        if (option.item) {
+                            inventory.push(option.item);
+                            updateInventory();
+                            logDebug(`Added item to inventory: ${option.item.name}`);
+                        }
+                        if (option.outcome === 'end') {
+                            showEndGame();
+                        } else {
+                            showStory(option.outcome);
+                        }
+                    };
+                    optionsDiv.appendChild(button);
+                });
+
+                storyContainer.appendChild(optionsDiv);
+            }
+        }
+
+        function showEndGame() {
+            const storyContainer = document.getElementById('storyContainer');
+            storyContainer.innerHTML = `
+        <div class="text-center">
+            <h2>Journey Complete</h2>
+            <p>Congratulations ${player.name}! You have completed your epic quest!</p>
+            <p>Final Stats:</p>
+            <ul class="list-unstyled">
+                <li>Strength: ${player.attributes.Strength}</li>
+                <li>Intelligence: ${player.attributes.Intelligence}</li>
+                <li>Agility: ${player.attributes.Agility}</li>
+                <li>Final Energy: ${player.energy}</li>
+            </ul>
+            <button onclick="location.reload()" class="btn btn-primary">Start New Adventure</button>
+        </div>
+    `;
+            logDebug('Game completed successfully');
+        }
+
+        // Initialize game
+        document.getElementById('nameSubmitButton').onclick = () => {
+            const nameInput = document.getElementById('nameInput').value;
+            if (nameInput) {
+                logDebug(`Starting new game with player name: ${nameInput}`);
+                player = new Character(nameInput, {
+                    Strength: getRandomAttribute(),
+                    Intelligence: getRandomAttribute(),
+                    Agility: getRandomAttribute()
+                });
+                document.getElementById('nameInputContainer').style.display = 'none';
+                document.getElementById('companionText').textContent = `Welcome, brave adventurer ${player.name}!`;
+                player.updateStats();
+                showStory(1);
+            }
+        };
+    </script>
+</body>
+
+</html>
